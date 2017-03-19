@@ -657,6 +657,10 @@ end
 
 local function SpawnBurrow(number)
 
+  if true then
+    return
+  end
+
   if (queenID) then -- don't spawn new burrows when queen is there
     return
   end
@@ -815,7 +819,6 @@ end
 
 local function Wave()
   --debug--Spring.Echo(t .. "Wave()")
-
   if gameOver then return end
 
   currentWave = math.min(math.ceil((((t-gracePeriod) / 60) / nextWave)), 12)
