@@ -1,6 +1,6 @@
 return {
-  name='Planet Defense',
-  description='The New Planet War',
+  name='Circle Defense',
+  description='Yeah',
   shortname='PA',
   version='$VERSION',
   mutator='',
