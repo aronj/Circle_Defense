@@ -3,6 +3,11 @@
 --------------------------------------------------------------------------------
 --------------------------------------------------------------------------------
 -- for debug
+
+function log(val)
+    Spring.Echo(val)
+end
+
 function table.has_value(tab, val)
     for _, value in ipairs (tab) do
         if value == val then
@@ -45,7 +50,7 @@ end
 
 function table.tostring(tbl)
   local result, done = {}, {}
-  for k, v in ipairs(tbl ) do
+  for k, v in ipairs(tbl) do
     table.insert(result, table.val_to_str(v) )
     done[ k ] = true
   end

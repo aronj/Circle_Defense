@@ -13,17 +13,13 @@ end
 --------------------------------------------------------------------------------
 --------------------------------------------------------------------------------
 
---local s = assert(VFS.LoadFile("luahelpers/main.lua", VFS.RAW_FIRST))
---local chunk = assert(loadstring(s, file))
---setfenv(chunk, gadget)
---chunk()
+VFS.Include("luahelpers/main.lua")
 
 local mapX = Game.mapSizeX
 local mapZ = Game.mapSizeZ
 
 local glColor            = gl.Color
 local glDepthTest        = gl.DepthTest
-local glScale            = gl.Scale
 local glVertex           = gl.Vertex
 local glBeginEnd         = gl.BeginEnd
 local glRotate           = gl.Rotate
@@ -35,15 +31,48 @@ local glCreateList       = gl.CreateList
 
 local spGetGameFrame = Spring.GetGameFrame
 local spTraceScreenRay = Spring.TraceScreenRay
+local spGetGroundOrigHeight = Spring.GetGroundOrigHeight
 
-local arrowListLength = 100
-local arrowList
+
+local lanesList
+
 
 local arrowOptions = {
   thickness = 20,
   spacing = 20,
   width = 100,
 }
+
+
+local rgbColors = {
+  ['base03'] = { 0, 43, 54 },
+  ['base02'] = { 7, 54, 66 },
+  ['base01'] = { 88, 110, 117 },
+  ['base00'] = { 101, 123, 131 },
+  ['base0'] = { 131, 148, 150 },
+  ['base1'] = { 147, 161, 161 },
+  ['base2'] = { 238, 232, 213 },
+  ['base3'] = { 253, 246, 227 },
+  ['yellow'] = { 181, 137, 0 },
+  ['orange'] = { 203, 75, 22 },
+  ['red'] = { 220, 50, 47 },
+  ['magenta'] = { 211, 54, 130 },
+  ['violet'] = { 108, 113, 196 },
+  ['blue'] = { 38, 139, 210 },
+  ['cyan'] = { 42, 161, 152 },
+  ['green'] = { 133, 153, 0 } }
+
+local highlights = {
+  [0] = { 181, 137, 0 },
+  [1] = { 203, 75, 22 },
+  [2] = { 220, 50, 47 },
+  [3] = { 211, 54, 130 },
+  [4] = { 108, 113, 196 },
+  [5] = { 38, 139, 210 },
+  [6] = { 42, 161, 152 },
+  [7] = { 133, 153, 0 }
+}
+
 local opacities = {
   0.08,
   0.15,
@@ -56,217 +85,274 @@ local opacities = {
 local laneWidth = 800
 local startingAreaWidth = 1500
 
-local laneDefPositions = {
-    -- from spawn to end, left (x,y) positions first
---    {
---      {startingAreaWidth, mapZ}, -- left spawn corner
---      {startingAreaWidth+laneWidth, mapZ}, -- right spawn corner
---      {startingAreaWidth, startingAreaWidth+laneWidth}, -- left end corner
---      {startingAreaWidth+laneWidth,startingAreaWidth+laneWidth}, -- right end corner
---      {180} -- angle
---    },
-    {
---      {2627, mapZ},
---      {2627+laneWidth, mapZ},
---      {2627+laneWidth, mapZ},
-      {startingAreaWidth, mapZ}, -- left spawn corner
-      {startingAreaWidth+laneWidth, mapZ}, -- right spawn corner
-      {startingAreaWidth, startingAreaWidth+laneWidth}, -- left end corner
-      {startingAreaWidth+laneWidth,startingAreaWidth+laneWidth}, -- right end corner
-      {180} -- angle
-    }
+local laneAreas = {
+  {
+    ['left_top'] = { ['x'] = startingAreaWidth, ['z'] = startingAreaWidth + laneWidth},
+    ['right_top'] = { ['x'] = startingAreaWidth+laneWidth, ['z'] = mapZ},
+    ['left_bottom'] = { ['x'] = startingAreaWidth, ['z'] = mapZ},
+    ['right_bottom'] = { ['x'] = startingAreaWidth+laneWidth, ['z'] = startingAreaWidth+laneWidth},
+    ['direction'] = 'up',
+    ['order'] = 'first'
+  },
+  {
+    ['left_top'] = { ['x'] = startingAreaWidth, ['z'] = startingAreaWidth },
+    ['right_top'] = { ['x'] = mapX - startingAreaWidth - laneWidth, ['z'] = startingAreaWidth },
+    ['left_bottom'] = { ['x'] = startingAreaWidth, ['z'] = startingAreaWidth + laneWidth },
+    ['right_bottom'] = { ['x'] = mapX - startingAreaWidth - laneWidth, ['z'] = startingAreaWidth + laneWidth },
+    ['direction'] = 'right'
+  },
+  {
+    ['left_top'] = { ['x'] = mapX - startingAreaWidth - laneWidth, ['z'] = startingAreaWidth },
+    ['right_top'] = { ['x'] = mapX - startingAreaWidth, ['z'] = startingAreaWidth },
+    ['left_bottom'] = { ['x'] = mapX - startingAreaWidth - laneWidth, ['z'] = mapZ - startingAreaWidth - laneWidth },
+    ['right_bottom'] = { ['x'] = mapX - startingAreaWidth, ['z'] = mapZ - startingAreaWidth - laneWidth},
+    ['direction'] = 'down'
+  },
+  {
+    ['left_top'] = { ['x'] = 2 * startingAreaWidth + 2 * laneWidth, ['z'] = mapZ - startingAreaWidth - laneWidth },
+    ['right_top'] = { ['x'] = mapX - startingAreaWidth, ['z'] = mapZ - startingAreaWidth - laneWidth },
+    ['left_bottom'] = { ['x'] = 2 * startingAreaWidth + 2 * laneWidth, ['z'] = mapZ - startingAreaWidth },
+    ['right_bottom'] = { ['x'] = mapX - startingAreaWidth, ['z'] = mapZ - startingAreaWidth },
+    ['direction'] = 'left'
+  },
+  {
+    ['left_top'] = { ['x'] = 2 * startingAreaWidth + 1 * laneWidth, ['z'] = 2*startingAreaWidth + 2*laneWidth },
+    ['right_top'] = { ['x'] = 2 * startingAreaWidth + 2 * laneWidth, ['z'] = 2 * startingAreaWidth + 2 * laneWidth },
+    ['left_bottom'] = { ['x'] = 2 * startingAreaWidth + 1 * laneWidth, ['z'] = mapZ - startingAreaWidth },
+    ['right_bottom'] = { ['x'] = 2 * startingAreaWidth + 2 * laneWidth, ['z'] = mapZ - startingAreaWidth },
+    ['direction'] = 'up',
+    ['order'] = 'last'
+  }
 }
 
-
-VFS.Include("luahelpers/main.lua")
-
-local frame
-
-local function DrawLaneLine(length)
-  for i = 0, length-1 do
-    DrawArrow(i)
-  end
-end
-
-function DrawArrow(i)
+function GLDrawArrowNumber(i)
   glBeginEnd(GL.QUAD_STRIP, function()
-    local forwardOffset = i*(arrowOptions.spacing+arrowOptions.thickness)
+    local forwardOffset = i * (arrowOptions.spacing + arrowOptions.thickness)
     local fowardOffsetWidth = forwardOffset + arrowOptions.thickness
-    glVertex(0,0,forwardOffset)
-    glVertex(0,0,fowardOffsetWidth)
-    glVertex(arrowOptions.width,0,forwardOffset+arrowOptions.width-2*arrowOptions.thickness)
-    glVertex(arrowOptions.width,0,forwardOffset+arrowOptions.width-arrowOptions.thickness)
-    glVertex(arrowOptions.width+arrowOptions.width,0,forwardOffset)
-    glVertex(arrowOptions.width+arrowOptions.width,0, fowardOffsetWidth)
+    glVertex(0, 0, forwardOffset)
+    glVertex(0, 0, fowardOffsetWidth)
+    glVertex(arrowOptions.width, 0, forwardOffset + arrowOptions.width - 2 * arrowOptions.thickness)
+    glVertex(arrowOptions.width, 0, forwardOffset + arrowOptions.width - arrowOptions.thickness)
+    glVertex(arrowOptions.width + arrowOptions.width, 0, forwardOffset)
+    glVertex(arrowOptions.width + arrowOptions.width, 0, fowardOffsetWidth)
   end)
 end
 
-function DrawLane(lanePos)
+function GLDrawArrow()
+  glBeginEnd(GL.QUAD_STRIP, function()
+    glVertex(0, 0, 0)
+    glVertex(0, 0, arrowOptions.thickness)
+    glVertex(arrowOptions.width, 0, 0 + arrowOptions.width - 2 * arrowOptions.thickness)
+    glVertex(arrowOptions.width, 0, 0 + arrowOptions.width - arrowOptions.thickness)
+    glVertex(arrowOptions.width + arrowOptions.width, 0, 0)
+    glVertex(arrowOptions.width + arrowOptions.width, 0, arrowOptions.thickness)
+  end)
+end
 
-  frame = spGetGameFrame()
---  log(table.tostring(lanePosition))
+
+function DrawMarker(x, y)
+  log('DrawMarker ('.. x .. ', ' .. y .. ')' )
   glPushMatrix()
---    glTranslate(50,31,50)
-    glTranslate(lanePos[1][1], 31, lanePos[1][2])
-    glRotate(180,0,1,0)
-  --    log(lanePositions[1][1])
-  --    log(x)
-  --    log(y)
-  --    log(z)
-    glColor(38/256, 139/256, 210/256, 0.3)
-    glDepthTest(GL.LEQUAL)
-    glCallList(arrowList)
-
-    local nArrows = 4
-    for arrow = 0, nArrows do
-      for tailPart = 1, #opacities do
-        glColor(38/256, 139/256, 210/256, opacities[tailPart])
-        local drawPos = (frame) % (arrowListLength) + tailPart
-        local finalDrawPos = (drawPos + arrow * arrowListLength / nArrows) % (arrowListLength)
-        if finalDrawPos <= arrowListLength then
-          DrawArrow(finalDrawPos)
-        end
-      end
-    end
+  glTranslate(x, 101, y)
+  glDepthTest(GL.LEQUAL)
+  glBeginEnd(GL.QUADS, function()
+    glVertex(-30, 0, -30)
+    glVertex(-30, 0, 30)
+    glVertex(30, 0, 30)
+    glVertex(30, 0, -30)
+  end)
   glPopMatrix()
+end
+
+function GLDrawAreaSideLanes(laneArea, nextArea)
+  local outerLength, innerLength, outerStartPos, innerStartPos, degree, deltaX, deltaZ = getLaneInfo(laneArea, nextArea)
+
+  local maxHeight = math.max(
+    spGetGroundOrigHeight(laneArea.left_top.x, laneArea.left_top.z),
+    spGetGroundOrigHeight(laneArea.right_top.x, laneArea.right_top.z),
+    spGetGroundOrigHeight(laneArea.left_bottom.x, laneArea.left_bottom.z),
+    spGetGroundOrigHeight(laneArea.right_bottom.x, laneArea.right_bottom.z)
+  ) + 2
+
+  local arrowStripWidth = 2 * arrowOptions.width
+
+
+  local currPosX = outerStartPos.x
+  local currPosZ = outerStartPos.z
+  local nOuterArrows = math.floor(outerLength / (arrowOptions['spacing'] + arrowOptions['thickness']))
+  for arrow = 0, nOuterArrows do
+    glPushMatrix()
+--    glTranslate(outerLength, 0, 0)
+--    glTranslate(0, 0, 0)
+    if degree == 0 then
+      glTranslate(currPosX - arrowStripWidth, maxHeight, currPosZ + arrowStripWidth)
+    elseif degree == 90 then
+      glTranslate(currPosX + arrowStripWidth, maxHeight, currPosZ + arrowStripWidth)
+    elseif degree == 180 then
+      glTranslate(currPosX + arrowStripWidth, maxHeight, currPosZ - (laneArea.order == 'first' and 0 or arrowStripWidth))
+    elseif degree == 270 then
+      glTranslate(currPosX - arrowStripWidth, maxHeight, currPosZ - arrowStripWidth)
+    end
+    glRotate(degree, 0, 1, 0)
+    GLDrawArrow()
+--    glTranslate(0, maxHeight, 0)
+--    glTranslate(0, 0, 0)
+    glPopMatrix()
+    currPosX = currPosX + deltaX
+    currPosZ = currPosZ + deltaZ
+  end
+
+
+  local currPosX = innerStartPos.x
+  local currPosZ = innerStartPos.z
+  log(innerLength)
+
+  local nInnerArrows = math.floor(innerLength / (arrowOptions['spacing'] + arrowOptions['thickness']))
+  local transX
+  local transZ
+log('nInnerArrows for lane ' .. nInnerArrows)
+  for arrow = 0, nInnerArrows do
+    glPushMatrix()
+      if degree == 0 then
+        transX = currPosX - arrowStripWidth
+        transZ = currPosZ + arrowStripWidth
+      elseif degree == 90 then
+        transX = currPosX + arrowStripWidth
+        transZ = currPosZ + arrowStripWidth
+      elseif degree == 180 then
+        transX = currPosX + arrowStripWidth
+        transZ = currPosZ - (laneArea.order == 'first' and 0 or arrowStripWidth)
+      elseif degree == 270 then
+        transX = currPosX - arrowStripWidth
+        transZ = currPosZ - arrowStripWidth
+      end
+      log('translating to ' .. transX .. ', '..transZ)
+      glTranslate(transX, maxHeight, transZ)
+      glRotate(degree, 0, 1, 0)
+      GLDrawArrow()
+    glPopMatrix()
+    currPosX = currPosX + deltaX
+    currPosZ = currPosZ + deltaZ
+  end
+
+
+  --    local nArrows = 4
+--    for arrow = 0, nArrows do
+--      for tailPart = 1, #opacities do
+--        glColor(38/256, 139/256, 210/256, opacities[tailPart])
+--        local drawPos = (frame) % (arrowListLength) + tailPart
+--        local finalDrawPos = (drawPos + arrow * arrowListLength / nArrows) % arrowListLength
+--        if finalDrawPos <= arrowListLength then
+--          GLDrawArrow(finalDrawPos)
+--        end
+--      end
+--    end
+--  glPopMatrix()
 
 
 end
 
-function getLaneLengths(laneDef)
+function getLaneInfo(laneArea, nextArea)
+  local outer
+  local inner
+  local outerStartPos
+  local innerStartPos
+  local degree
+  local deltaX = 0
+  local deltaZ = 0
+--  local nextAreaWidth
+
+--  log('table.tostring(laneArea) ' .. table.tostring(laneArea))
+--  log('table.tostring(nextArea) ' .. table.tostring(nextArea))
+  if laneArea.direction == 'up' then
+    outer = laneArea.left_top.z - laneArea.left_bottom.z
+    inner = outer - (nextArea and math.abs(nextArea.left_top.z - nextArea.left_bottom.z) or 0)
+    outerStartPos = laneArea.left_bottom
+    innerStartPos = {['x'] = laneArea.right_bottom.x, ['z'] = laneArea.right_bottom.z - (laneArea.order == 'first' and 0 or laneWidth)}
+--    innerStartPos = {['x'] = laneArea.right_bottom.x, ['z'] = laneArea.right_bottom.z - (laneArea.order == 'first' and 0 or laneWidth)}
+    degree = 180
+    deltaZ = -(arrowOptions.thickness + arrowOptions.spacing)
+  elseif laneArea.direction == 'right' then
+    outer = laneArea.right_top.x - laneArea.left_top.x
+    inner = outer - (nextArea and math.abs(nextArea.left_top.x - nextArea.right_top.x) or 0)
+    outerStartPos = laneArea.left_top
+    innerStartPos = {['x'] = laneArea.left_bottom.x + laneWidth, ['z'] = laneArea.left_bottom.z}
+    degree = 90
+    deltaX = (arrowOptions.thickness + arrowOptions.spacing)
+  elseif laneArea.direction == 'down' then
+    outer = laneArea.right_top.z - laneArea.right_bottom.z
+    inner = outer - (nextArea and math.abs(nextArea.left_top.z - nextArea.left_bottom.z) or 0)
+    outerStartPos = laneArea.right_top
+    innerStartPos = {['x'] = laneArea.left_top.x, ['z'] = laneArea.left_top.z + laneWidth }
+    degree = 0
+    deltaZ = (arrowOptions.thickness + arrowOptions.spacing)
+  elseif laneArea.direction == 'left' then
+    outer = laneArea.right_bottom.x - laneArea.left_bottom.x
+    inner = outer - (nextArea and math.abs(nextArea.left_top.x - nextArea.right_top.x) or 0)
+    outerStartPos = laneArea.right_bottom
+    innerStartPos = {['x'] =  laneArea.right_top.x - laneWidth, ['z'] = laneArea.right_top.z }
+    degree = 270
+    deltaX = -(arrowOptions.thickness + arrowOptions.spacing)
+  end
+
+  -- pixel pushing :3
+  outer = math.abs(outer) + (laneArea.order == 'last' and 0 or laneWidth) - (laneArea.order == 'first' and 0 or 2 * arrowOptions.width) - 2*(arrowOptions.spacing +
+  arrowOptions.thickness)
+  inner = math.abs(inner)
+
+  return outer, inner, outerStartPos, innerStartPos, degree, deltaX, deltaZ
 end
+
 
 function widget:Initialize()
-  log(table.tostring(laneDefPositions))
+    lanesList = glCreateList(function()
+      glDepthTest(GL.LEQUAL)
+      for i = 1, #laneAreas do
+        local r = i % #highlights
+        glColor(highlights[r][1]/256, highlights[r][2]/256, highlights[r][3]/256, 0.6)
+        log('GLDrawAreaSideLanes '..i)
+--        glColor(rgbColors['blue'][1] / 256, rgbColors['blue'][2] / 256, rgbColors['blue'][3] / 256, 0.3)
+        GLDrawAreaSideLanes(laneAreas[i], i < #laneAreas and laneAreas[i+1] or nil)
+      end
+    end)
+end
 
---  log(laneDefPositions[1][1][1]-laneDefPositions[1][2][1]) -- x1
---  log(laneDefPositions[1][1][1]-laneDefPositions[1][3][1])
---  log(laneDefPositions[1][1][1]-laneDefPositions[1][3][1])
---  log(laneDefPositions[1][1][1]-laneDefPositions[1][3][1])
---  log(laneDefPositions[1][1][1]-laneDefPositions[1][3][1])
-  for k, v in pairs(laneDefPositions) do
---    log(table.tostring(laneDefPositions[1][3][1]))
---    left edge
-    local length = getLaneLengths(laneDefPositions[1][3])
-    local x_end = laneDefPositions[1][3][2]
-    local x_start = laneDefPositions[1][1][2]
-    local laneLength = x_end - x_start
-    log('laneLength'..x_end .. ' '..x_start)
-    arrowList = glCreateList(DrawLaneLine, (laneLength)/(arrowOptions.thickness+arrowOptions.spacing))
-    arrowList = glCreateList(DrawLaneLine, (laneDefPositions[1][3][1] - laneDefPositions[1][1][3])/(arrowOptions.thickness+arrowOptions.spacing))
+function widget:MousePress(x, z, button)
+  local _, pos = spTraceScreenRay(x, z, true)
+--  log('max values ' .. mapX .. ' ' .. mapZ)
+  if not pos then
+    return
   end
-
+  log('pressed ' .. math.floor(pos[1]) .. '/' .. mapX .. ' ' .. math.floor(pos[3]) .. '/' .. mapZ .. ' height: ' .. pos[2] )
 end
-
-function widget:MousePress(x, y, button)
-  local _, pos = spTraceScreenRay(x, y, true)
-  log('max values '.. mapX.. ' '.. mapZ)
-  log('pressed '..math.floor(pos[1]).. '/'.. mapX ..' '..math.floor(pos[3]) .. '/'..mapZ)
-end
-
-
-
 
 function widget:DrawWorld()
---  DrawLane(laneDefPositions[1])
-
---  if not arrowList then
---    arrowList = glCreateList(DrawLaneLine, arrowListLength)
---  log(#lanePositions)
---    for k, lanePosition in ipairs(lanePositions) do
---
---    end
---
---  end
+  glCallList(lanesList)
 --[[
-
-  frame = springGetGameFrame()
   glPushMatrix()
---    glTranslate(5000,31,5000)
-    glTranslate(lanePositions[1][1][1], 31, lanePositions[1][1][2])
-    glRotate(180,0,1,0)
---    log(lanePositions[1][1])
---    log(x)
---    log(y)
---    log(z)
-    glColor(38/256, 139/256, 210/256, 0.3)
-    glDepthTest(GL.LEQUAL)
-    glCallList(arrowList[1])
-
-    local nArrows = 4
-    for arrow = 0, nArrows do
-      for tailPart = 1, #opacities do
-        glColor(38/256, 139/256, 210/256, opacities[tailPart])
-        local drawPos = (frame) % (arrowListLength) + tailPart
-        local finalDrawPos = (drawPos + arrow * arrowListLength / nArrows) % (arrowListLength)
-        if finalDrawPos <= arrowListLength then
-          DrawArrow(finalDrawPos)
-        end
-      end
-    end
+  for i = 1, #laneAreas do
+    log('Markers laneArea ' .. i)
+    local r = i % #highlights
+    glColor(highlights[r][1]/256, highlights[r][2]/256, highlights[r][3]/256, 0.6)
+    DrawMarker(laneAreas[i].left_bottom.x, laneAreas[i].left_bottom.z)
+    DrawMarker(laneAreas[i].right_bottom.x, laneAreas[i].right_bottom.z)
+    DrawMarker(laneAreas[i].left_top.x, laneAreas[i].left_top.z)
+    DrawMarker(laneAreas[i].right_top.x, laneAreas[i].right_top.z)
+--    GLDrawAreaSideLanes(i,laneAreas)
+  end
   glPopMatrix()
-]]
+  ]]
 
+
+  --      local nArrows = 4
+  --      for arrow = 0, nArrows do
+  --        for tailPart = 1, #opacities do
+  --          glColor(38/256, 139/256, 210/256, opacities[tailPart])
+  --          local drawPos = (frame) % (arrowListLength) + tailPart
+  --          local finalDrawPos = (drawPos + arrow * arrowListLength / nArrows) % (arrowListLength)
+  --          if finalDrawPos <= arrowListLength then
+  --            DrawArrow(finalDrawPos)
+  --          end
+  --        end
+  --      end
 end
-
-
-function log(val)
-  Spring.Echo(val)
-end
---[[
-
-function table.has_value(tab, val)
-    for _, value in ipairs (tab) do
-        if value == val then
-            return true
-        end
-    end
-    return false
-end
-
-function table.full_of(tab, val)
-    for _, value in ipairs (tab) do
-        if value ~= val then
-            return false
-        end
-    end
-    return true
-end
-
--- for printing tables
-function table.val_to_str(v)
-  if "string" == type(v) then
-    v = string.gsub(v, "\n", "\\n" )
-    if string.match(string.gsub(v,"[^'\"]",""), '^"+$' ) then
-      return "'" .. v .. "'"
-    end
-    return '"' .. string.gsub(v,'"', '\\"' ) .. '"'
-  else
-    return "table" == type(v) and table.tostring(v) or
-      tostring(v)
-  end
-end
-
-function table.key_to_str(k)
-  if "string" == type(k) and string.match(k, "^[_%a][_%a%d]*$" ) then
-    return k
-  else
-    return "[" .. table.val_to_str(k) .. "]"
-  end
-end
-
-function table.tostring(tbl)
-  local result, done = {}, {}
-  for k, v in ipairs(tbl ) do
-    table.insert(result, table.val_to_str(v) )
-    done[ k ] = true
-  end
-  for k, v in pairs(tbl) do
-    if not done[ k ] then
-      table.insert(result,
-        table.key_to_str(k) .. "=" .. table.val_to_str(v) )
-    end
-  end
-  return "{" .. table.concat(result, "," ) .. "}"
-end
-]]
